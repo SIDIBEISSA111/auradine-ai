@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   LayoutDashboard,
   Utensils,
   ChefHat,
   Package,
   Leaf,
-  Flame,
   Clock,
   Award,
   ShieldAlert,
@@ -13,33 +12,77 @@ import {
   ShoppingBag,
   Plus,
   Minus,
-  Trash2,
   CheckCircle,
   AlertTriangle,
-  ArrowUpRight,
   Wine,
   TrendingUp,
   DollarSign,
   Users,
-  RefreshCw,
   Search,
-  Filter,
   X,
   ChevronRight,
   Check,
   Bell,
-  Heart,
-  BarChart3,
-  Calendar,
-  Layers,
-  Info
+  BarChart3
 } from 'lucide-react';
+
+// ==========================================
+// TYPES
+// ==========================================
+
+type View = 'dashboard' | 'menu' | 'kds' | 'inventory';
+
+type Dish = {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  prepTime: number; // minutes
+  co2Impact: number; // kg CO2e
+  calories: number;
+  dietary: string[];
+  allergens: string[];
+  description: string;
+  image: string;
+  winePairing: string;
+  isEcoHighlight: boolean;
+};
+
+type OrderStatus = 'todo' | 'in_progress' | 'ready' | 'served';
+
+type KdsOrder = {
+  id: string;
+  table: string;
+  guestCount: number;
+  createdAt: string; // ISO
+  status: OrderStatus;
+  items: { name: string; quantity: number; notes: string }[];
+  carbonScore: string;
+};
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  category: string;
+  currentStock: number;
+  minStock: number;
+  unit: string;
+  expiryDays: number;
+  status: 'optimal' | 'expiring' | 'critical';
+  unitPrice: number;
+};
+
+type CartItem = { dish: Dish; quantity: number };
+
+type ToastType = 'success' | 'warning' | 'info';
+
+type Toast = { id: number; message: string; type: ToastType; title: string };
 
 // ==========================================
 // MOCK DATA & INITIAL STATES
 // ==========================================
 
-const INITIAL_DISHES = [
+const INITIAL_DISHES: Dish[] = [
   {
     id: 'd1',
     name: 'Pavé de Saumon Bio Encroûté aux Herbes',
@@ -161,21 +204,6 @@ const INITIAL_DISHES = [
     isEcoHighlight: true
   },
   {
-    id: 'd9',
-    name: 'Velouté Éco-Responsable Truffe & Champignons',
-    category: 'Entrées',
-    price: 19.50,
-    prepTime: 11,
-    co2Impact: 0.2,
-    calories: 260,
-    dietary: ['Végétarien', 'Sans Gluten', 'Bas Carbone'],
-    allergens: ['Lait'],
-    description: 'Recette créative anti-gaspillage optimisée par IA à partir de surstocks d’ingrédients frais d’aujourd’hui.',
-    image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80',
-    winePairing: 'Meursault Domaine Coche-Dury',
-    isEcoHighlight: true
-  },
-  {
     id: 'd10',
     name: 'Magret de Canard du Sud-Ouest aux Figues',
     category: 'Plats Principaux',
@@ -192,7 +220,25 @@ const INITIAL_DISHES = [
   }
 ];
 
-const INITIAL_KDS_ORDERS = [
+// Plat du jour proposé par l'« IA » anti-gaspi : il n'est ajouté à la carte
+// que lorsqu'on clique sur « Activer le Plat Anti-Gaspi » ou « Injecter au Menu ».
+const ANTI_WASTE_DISH: Dish = {
+  id: 'd9',
+  name: 'Velouté Éco-Responsable Truffe & Champignons',
+  category: 'Entrées',
+  price: 19.50,
+  prepTime: 11,
+  co2Impact: 0.2,
+  calories: 260,
+  dietary: ['Végétarien', 'Sans Gluten', 'Bas Carbone'],
+  allergens: ['Lait'],
+  description: 'Recette créative anti-gaspillage optimisée par IA à partir de surstocks d’ingrédients frais d’aujourd’hui.',
+  image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80',
+  winePairing: 'Meursault Domaine Coche-Dury',
+  isEcoHighlight: true
+};
+
+const INITIAL_KDS_ORDERS: KdsOrder[] = [
   {
     id: 'ORD-801',
     table: 'Table 04',
@@ -255,7 +301,7 @@ const INITIAL_KDS_ORDERS = [
   }
 ];
 
-const INITIAL_INVENTORY = [
+const INITIAL_INVENTORY: InventoryItem[] = [
   { id: 'i1', name: 'Pavé de Saumon Bio (Norvège)', category: 'Poissons', currentStock: 4.2, minStock: 5.0, unit: 'kg', expiryDays: 1, status: 'expiring', unitPrice: 38.00 },
   { id: 'i2', name: 'Courgettes Bio Locales', category: 'Légumes', currentStock: 14.5, minStock: 6.0, unit: 'kg', expiryDays: 2, status: 'expiring', unitPrice: 3.20 },
   { id: 'i3', name: 'Truffe Noire d’Alba', category: 'Épicerie Fine', currentStock: 0.3, minStock: 0.2, unit: 'kg', expiryDays: 12, status: 'optimal', unitPrice: 1200.00 },
@@ -297,21 +343,28 @@ const CARBON_TREND_DATA = [
 
 export default function App() {
   // Navigation State
-  const [activeView, setActiveView] = useState('dashboard'); // dashboard, menu, kds, inventory
+  const [activeView, setActiveView] = useState<View>('dashboard');
 
   // Data States
-  const [dishes, setDishes] = useState(INITIAL_DISHES);
-  const [kdsOrders, setKdsOrders] = useState(INITIAL_KDS_ORDERS);
-  const [inventory, setInventory] = useState(INITIAL_INVENTORY);
-  const [cart, setCart] = useState([]);
+  const [dishes, setDishes] = useState<Dish[]>(INITIAL_DISHES);
+  const [kdsOrders, setKdsOrders] = useState<KdsOrder[]>(INITIAL_KDS_ORDERS);
+  const [inventory] = useState<InventoryItem[]>(INITIAL_INVENTORY);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedTip, setSelectedTip] = useState(5); // % tip
   const [isAntiWasteModalOpen, setIsAntiWasteModalOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-  // Toast Notification System
-  const [toasts, setToasts] = useState([]);
+  // Heure courante pour les minuteurs du KDS (rafraîchie toutes les 30 s)
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const addToast = (message, type = 'info', title = 'Notification') => {
+  // Toast Notification System
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = (message: string, type: ToastType = 'info', title = 'Notification') => {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, message, type, title }]);
     setTimeout(() => {
@@ -320,14 +373,14 @@ export default function App() {
   };
 
   // Filters State for Menu View
-  const [selectedDietary, setSelectedDietary] = useState([]);
+  const [selectedDietary, setSelectedDietary] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [searchQuery, setSearchQuery] = useState('');
   const [ecoFilterOnly, setEcoFilterOnly] = useState(false);
   const [fastPrepOnly, setFastPrepOnly] = useState(false);
 
   // AI Sommelier State
-  const [selectedSommelierDish, setSelectedSommelierDish] = useState(null);
+  const [selectedSommelierDish, setSelectedSommelierDish] = useState<Dish | null>(null);
 
   // Stats Calculations
   const cartTotals = useMemo(() => {
@@ -344,7 +397,7 @@ export default function App() {
   }, [cart, selectedTip]);
 
   // Cart Handlers
-  const addToCart = (dish) => {
+  const addToCart = (dish: Dish) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.dish.id === dish.id);
       if (existing) {
@@ -357,17 +410,13 @@ export default function App() {
     addToast(`${dish.name} ajouté au panier éco-responsable.`, 'success', 'Ajout au Panier');
   };
 
-  const updateCartQuantity = (dishId, delta) => {
+  const updateCartQuantity = (dishId: string, delta: number) => {
     setCart((prev) =>
       prev
-        .map((item) => {
-          if (item.dish.id === dishId) {
-            const newQty = item.quantity + delta;
-            return newQty > 0 ? { ...item, quantity: newQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean)
+        .map((item) =>
+          item.dish.id === dishId ? { ...item, quantity: item.quantity + delta } : item
+        )
+        .filter((item) => item.quantity > 0)
     );
   };
 
@@ -377,7 +426,7 @@ export default function App() {
     if (cart.length === 0) return;
 
     const tableNum = `Table ${Math.floor(Math.random() * 20) + 1}`;
-    const newOrder = {
+    const newOrder: KdsOrder = {
       id: `ORD-${Math.floor(100 + Math.random() * 900)}`,
       table: tableNum,
       guestCount: Math.floor(Math.random() * 4) + 1,
@@ -388,7 +437,7 @@ export default function App() {
         quantity: item.quantity,
         notes: item.dish.dietary.join(', ') || 'Standard'
       })),
-      carbonScore: `${(cartTotals.co2Saved * 0.8).toFixed(1)} kg CO2`
+      carbonScore: `${(Number(cartTotals.co2Saved) * 0.8).toFixed(1)} kg CO2`
     };
 
     setKdsOrders((prev) => [newOrder, ...prev]);
@@ -397,7 +446,7 @@ export default function App() {
   };
 
   // KDS Status Transition
-  const updateOrderStatus = (orderId, nextStatus) => {
+  const updateOrderStatus = (orderId: string, nextStatus: OrderStatus) => {
     setKdsOrders((prev) =>
       prev.map((order) => {
         if (order.id === orderId) {
@@ -406,16 +455,22 @@ export default function App() {
         return order;
       })
     );
-    const statusLabels = { in_progress: 'En Cuisine', ready: 'Prêt à Servir', served: 'Livré' };
-    addToast(`Commande ${orderId} passée à: ${statusLabels[nextStatus] || nextStatus}`, 'info', 'Mise à jour KDS');
+    const statusLabels: Record<OrderStatus, string> = {
+      todo: 'À Préparer',
+      in_progress: 'En Cuisine',
+      ready: 'Prêt à Servir',
+      served: 'Livré'
+    };
+    addToast(`Commande ${orderId} passée à: ${statusLabels[nextStatus]}`, 'info', 'Mise à jour KDS');
   };
 
   // AI Push Urgent Alert Dish to Menu
   const handlePushAIDishToMenu = () => {
-    const existing = dishes.find((d) => d.id === 'd9');
+    const existing = dishes.find((d) => d.id === ANTI_WASTE_DISH.id);
     if (existing) {
       addToast('Le Plat Anti-Gaspi du Jour est déjà actif sur la carte client.', 'warning', 'IA Optimisation');
     } else {
+      setDishes((prev) => [ANTI_WASTE_DISH, ...prev]);
       addToast('Nouveau plat éco-conçu injecté en direct dans la carte client!', 'success', 'Succès Anti-Gaspi');
     }
   };
@@ -450,7 +505,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-emerald-900 selection:text-amber-400">
       
       {/* ================= HEADER ================= */}
-      <header className="sticky top-0 z-40 bg-emerald-950 text-white border-b border-emerald-800 shadow-lg backdrop-blur-md bg-opacity-95">
+      <header className="sticky top-0 z-40 bg-emerald-950/95 text-white border-b border-emerald-800 shadow-lg backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
           {/* Logo & Vatel Badge */}
@@ -1302,7 +1357,7 @@ export default function App() {
                       .filter((o) => o.status === 'todo')
                       .map((order) => {
                         const minsElapsed = Math.floor(
-                          (Date.now() - new Date(order.createdAt).getTime()) / 60000
+                          (now - new Date(order.createdAt).getTime()) / 60000
                         );
                         let timerColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
                         if (minsElapsed >= 10 && minsElapsed < 18) {
@@ -1380,7 +1435,7 @@ export default function App() {
                       .filter((o) => o.status === 'in_progress')
                       .map((order) => {
                         const minsElapsed = Math.floor(
-                          (Date.now() - new Date(order.createdAt).getTime()) / 60000
+                          (now - new Date(order.createdAt).getTime()) / 60000
                         );
                         let timerColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
                         if (minsElapsed >= 10 && minsElapsed < 18) {
@@ -1534,10 +1589,10 @@ export default function App() {
               {/* Data Table Container */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between text-xs text-slate-500 font-semibold">
-                  <span>12 Ingrédients Référencés</span>
+                  <span>{inventory.length} Ingrédients Référencés</span>
                   <div className="flex items-center space-x-2">
                     <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span>3 Péremptions Proches (&lt; 3 jours)</span>
+                    <span>{inventory.filter((item) => item.expiryDays < 3).length} Péremptions Proches (&lt; 3 jours)</span>
                   </div>
                 </div>
 
@@ -1691,7 +1746,7 @@ export default function App() {
               <button
                 onClick={() => {
                   setIsAntiWasteModalOpen(false);
-                  addToast('Nouveau Plat Anti-Gaspi publié avec succès au Menu Client!', 'success', 'Publication Effectuée');
+                  handlePushAIDishToMenu();
                 }}
                 className="bg-emerald-900 hover:bg-emerald-950 text-amber-300 font-bold px-5 py-2.5 rounded-xl text-xs shadow-md transition-all flex items-center space-x-2 border border-emerald-700"
               >
